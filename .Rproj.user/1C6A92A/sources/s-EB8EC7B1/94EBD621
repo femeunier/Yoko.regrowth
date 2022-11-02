@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1666703176911.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "94EBD621",
+    "lastKnownWriteTime" : 1667386675,
+    "last_content_update" : 1667386675113,
+    "path" : "/home/femeunier/Documents/projects/Yoko.regrowth/scripts/analyze.ERA5.Yoko_ensemble.R",
+    "project_path" : "scripts/analyze.ERA5.Yoko_ensemble.R",
+    "properties" : {
+        "cursorPosition" : "246,42",
+        "scrollLine" : "244",
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 3,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

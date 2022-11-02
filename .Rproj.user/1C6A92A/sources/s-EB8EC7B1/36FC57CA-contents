@@ -1,0 +1,50 @@
+rm(list = ls())
+
+library(reticulate)
+library(ncdf4)
+
+use_python("/usr/bin/python3.8", required = T)
+py_config()
+
+source_python("./scripts/mod_netcdf_var.py")
+
+maindir <- "/home/femeunier/Documents/projects/Yoko.regrowth/data/ERA5/Yoko/ERA5_Yoko_ensemble_processed/"
+Nensemble <- 10
+
+# maindir <- "/home/femeunier/Documents/projects/Yoko.regrowth/data/ERA5/Yoko/ERA5_Yoko_processed"
+# Nensemble <- 1
+
+years2add <- 1700:1709   
+
+for (i in seq(1,Nensemble)){
+  dirpath <- file.path(maindir,paste0("ERA5_Yoko_",i))
+  years2replace <- seq(1850,1859)         
+  for (iyear in seq(1,length(years2add))){
+    
+    if (lubridate::leap_year(years2add[iyear])){
+      yearselect <- sample(rep(years2replace[lubridate::leap_year(years2replace)],2),1)
+    } else {
+      yearselect <- sample(rep(years2replace[!lubridate::leap_year(years2replace)],2),1)
+    }
+    print(yearselect)
+    years2replace <- years2replace[years2replace != yearselect] 
+    
+    fname <- paste0("ERA5.1.",yearselect,".nc")
+    fname.mod <- paste0("ERA5.1.",years2add[iyear],".nc")
+    
+    met_driver <- file.path(dirpath,fname)
+    met_driver.mod <- file.path(dirpath,fname.mod)
+    
+    if (file.exists(met_driver.mod)) system2("rm",paste(met_driver.mod))
+    system2("cp",paste(met_driver,met_driver.mod))
+    
+    y = mod_netcdf_var(met_driver.mod,
+                       "mole_fraction_of_carbon_dioxide_in_air",
+                       277)
+    system2("ncatted",paste0("-h -a units,time,o,c,'hours since ",years2add[iyear],
+                             "-01-01T00:00' /home/femeunier/Documents/projects/Yoko.regrowth/data/ERA5/Yoko/ERA5_Yoko_processed/ERA5_Yoko_1/ERA5.1.",years2add[iyear],".nc"))
+    
+  }
+}
+
+# nc <- nc_open(met_driver.mod)

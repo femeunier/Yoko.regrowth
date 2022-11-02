@@ -1,0 +1,13 @@
+{
+    "path" : "/home/femeunier/Documents/projects/Yoko.regrowth/R",
+    "sortOrder" : [
+        {
+            "ascending" : true,
+            "columnIndex" : 2
+        },
+        {
+            "ascending" : false,
+            "columnIndex" : 4
+        }
+    ]
+}

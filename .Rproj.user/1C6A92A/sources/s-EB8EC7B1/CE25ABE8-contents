@@ -1,0 +1,69 @@
+rm(list = ls())
+
+library(ncdf4)
+library(reshape2)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(Yoko.regrowth)
+library(zoo)
+library(tidyr)
+library(PEcAn.ED2)
+
+start_year <- 1850 ; end_year <- 2021
+
+start_date <- paste0(start_year,"-01-01")
+end_date <- paste0(end_year,"-12-31")
+slat = 0.3
+slon = 25.3
+overwrite = TRUE
+
+destination <- "/data/gent/vo/000/gvo00074/felicien/R/data/"
+site.XTS <- file.path(destination,"ERA5_ensemble.RDS")
+
+for (year in seq(start_year,end_year)){
+
+  print(year)
+
+  csite.xts <- list()
+  for (i in seq(1,10)){
+    csite.xts[[i]] <- site.XTS[[i]] %>% subset(year(index(site.XTS[[i]])) == year)
+  }
+
+  out <- Yoko.regrowth::met2CF.ERA5(
+    lat = slat,
+    long = slon,
+    start_date =  paste0(year,"-01-01"),
+    end_date = paste0(year,"-12-31"),
+    sitename = "Yoko_ensemble",
+    outfolder = destination,
+    out.xts = csite.xts,
+    overwrite = overwrite,
+    verbose = FALSE,
+    type = "ensemble")
+
+}
+
+
+for (imember in seq(1,10)){
+
+  print(imember/10)
+
+  for (year in seq(start_year,end_year)){
+    print(year)
+
+    Yoko.regrowth::mod.met2model.ED2(
+      in.path =  file.path(destination,paste0("ERA5_Yoko_ensemble_",imember)),
+      in.prefix = paste0("ERA5.",imember),
+      outfolder = file.path(destination,paste0("ERA5_Yoko_ensemble_",imember),"ED2"),
+      start_date =  paste0(year,"-01-01"),
+      end_date = paste0(year,"-12-31"),
+      lat = slat,
+      lon = slon,
+      lst = 2,
+      overwrite = overwrite
+    )
+  }
+}
+
+
