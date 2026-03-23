@@ -31,8 +31,8 @@ met2CF.CRUJRA<- function(lat,
         #precipitation it's originaly in meters. Meters times the density will give us the kg/m2
         ens[, "pre"] <-
           as.numeric(as.vector(ens[, "pre"]))/(6 * 3600) # divided by 3 because we have 1 hours data --> mm/h
-        ens[, "pre"] <-
-          udunits2::ud.convert(ens[, "pre"], "kg m-2 hr-1", "kg m-2 s-1")  #There are 21600 seconds in 6 hours??
+        # ens[, "pre"] <-
+        #   udunits2::ud.convert(ens[, "pre"], "kg m-2 hr-1", "kg m-2 s-1")  #There are 21600 seconds in 6 hours??
         #RH
         #Adopted from weathermetrics/R/moisture_conversions.R
         t <-
@@ -45,7 +45,7 @@ met2CF.CRUJRA<- function(lat,
       })
 
 
-      xts::merge.xts(ens ) %>%
+      xts::merge.xts(ens) %>%
         `colnames<-`(
           c(
             "air_temperature",
