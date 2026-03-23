@@ -6,6 +6,7 @@ met2CF.CRUJRA<- function(lat,
                        outfolder,
                        out.xts,
                        overwrite = FALSE,
+                       offset = 0L,
                        verbose = TRUE) {
 
   years <- seq(lubridate::year(start_date),
@@ -131,7 +132,7 @@ met2CF.CRUJRA<- function(lat,
           #Each ensemble gets its own file
 
           nt <- length(zoo::index(data.for.this.year.ens))
-          hours <- seq.int(0, by = 6L, length.out = nt)
+          hours <- seq.int(offset, by = 6L, length.out = nt)
           time_vals_days <- as.double(hours) / 24
 
           time_dim <- ncdf4::ncdim_def(
