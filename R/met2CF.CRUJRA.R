@@ -26,7 +26,7 @@ met2CF.CRUJRA<- function(lat,
 
         # Reanalysis have hourly time-step!
 
-        ens[, "dswrf"] <- as.numeric(as.vector(ens[, "dswrf"]))/((3600*3))
+        ens[, "dswrf"] <- as.numeric(as.vector(ens[, "dswrf"]))/((3600*6))
         ens[, "dlwrf"] <- as.numeric(as.vector(ens[, "dlwrf"]))
         #precipitation it's originaly in meters. Meters times the density will give us the kg/m2
         ens[, "pre"] <-
