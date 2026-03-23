@@ -131,7 +131,7 @@ met2CF.CRUJRA<- function(lat,
           #Each ensemble gets its own file
 
           nt <- length(zoo::index(data.for.this.year.ens))
-          hours <- seq.int(0, by = 3L, length.out = nt)
+          hours <- seq.int(0, by = 6L, length.out = nt)
           time_vals_days <- as.double(hours) / 24
 
           time_dim <- ncdf4::ncdim_def(
