@@ -8,6 +8,7 @@ library(lubridate)
 library(Yoko.regrowth)
 library(zoo)
 library(tidyr)
+library(xts)
 library(PEcAn.ED2)
 
 years <- c(1960:2021)                                                             # years available
@@ -102,7 +103,7 @@ for (imember in seq(1,10)){
   }
 }
 
-df.all.time.all.local.time <- df.all.time.all %>% mutate(t = t + 3600) %>%
+df.all.time.all.local.time <- df.all.time.all %>% mutate(t = t + 0) %>% # UTC!!!
   mutate(year = year(t),
          month = month(t),
          day = day(t),

@@ -1,10 +1,35 @@
-# rm(list = ls())
+rm(list = ls())
 
 library(xts)
 library(dplyr)
 library(lubridate)
-library(tidyr)
-library(ggplot2)
+
+# reanalysis
+met.Yoko <- readRDS(file = file.path("/home/femeunier/Documents/projects/Yoko.regrowth/data/ERA5/Yoko",
+                                     paste0("ERA5_Yoko_processed"),
+                                     "ERA5_reanalysis.RDS"))
+
+df.met.Yoko <- as.data.frame(met.Yoko) %>%
+  tibble::rownames_to_column(var = "t") %>%
+  mutate(year = year(t),
+         month = month(t),
+         day = day(t),
+         h = hour(t),
+         min = minute(t),
+         sec = second(t))
+
+df.met.Yoko.conv <- df.met.Yoko %>%
+  mutate(ssrd = ssrd/(1*3600),
+         strd = strd/(1*3600),
+         tp = tp*1000/(1*3600),
+         temp = t2m - 273.15,
+         dewpoint = d2m - 273.15,
+         beta = (112 - (0.1 * temp) + dewpoint) / (112 + (0.9 * temp)),
+         rh = beta ^ 8) %>%
+  mutate(sh = PEcAn.data.atmosphere::rh2qair(rh,
+                                             as.numeric(t2m),
+                                             as.numeric(sp)))
+
 
 # Ensemble
 met.Yoko <- readRDS(file = file.path("/home/femeunier/Documents/projects/Yoko.regrowth/data/ERA5/Yoko",
@@ -31,47 +56,67 @@ df.met.Yoko <- do.call(rbind,met.Yoko) %>%
          sec = second(t))
 
 # Conversion
-df.met.Yoko.conv <- df.met.Yoko %>%
+df.met.Yoko.conv.ensemble <- df.met.Yoko %>%
   mutate(ssrd = ssrd/(3*3600),
          strd = strd/(3*3600),
          tp = tp*1000/(3*3600),
          temp = t2m - 273.15,
          dewpoint = d2m - 273.15,
          beta = (112 - (0.1 * temp) + dewpoint) / (112 + (0.9 * temp)),
+
          rh = beta ^ 8) %>%
   mutate(sh = PEcAn.data.atmosphere::rh2qair(rh,
                                              as.numeric(t2m),
-                                             as.numeric(sp))) %>%
-  dplyr::select(-c(t2m,d2m,beta,rh,dewpoint))
+                                             as.numeric(sp)))
 
-saveRDS(df.met.Yoko.conv,
-        "/home/femeunier/Documents/projects/Yoko.regrowth/data/ERA5/Yoko/ERA5_Yoko_ensemble_processed/ERA5_ensemble_conv.RDS")
-
-variables <- tibble::tribble(
-  ~description, ~units, ~api_name, ~xts_name,
-  "air_temperature", "Kelvin", "2m_temperature", "temp",
-  "air_pressure", "Pa", "surface_pressure", "sp",
-  "specific_humidity", "g/g", "2m_specific_humidity", "sh",
-  "precipitation_flux", "kg/m2/s", "total_precipitation", "tp",
-  "eastward_wind", "m/s", "10m_u_component_of_wind", "u10",
-  "northward_wind", "m/s", "10m_v_component_of_wind", "v10",
-  "surface_downwelling_shortwave_flux_in_air", "W/m2", "surface_solar_radiation_downwards", "ssrd",
-  "surface_downwelling_longwave_flux_in_air", "W/m2", "surface_thermal_radiation_downwards", "strd",
-  "air_mole_fraction","mol/mol","mole_fraction_of_carbon_dioxide_in_air","mole_fraction_of_carbon_dioxide_in_air")
-
-
+################################################################################
+# Comparison
 df.all.long <- df.met.Yoko.conv %>%
-  pivot_longer(cols = -c(t,ensemble.member,year,month,day,h,min,sec),
-               names_to = "var",
-               values_to = "value") %>% arrange(t)
-df.all.long.reanalysis <- df.met.Yoko.conv.reanalysis %>%
-  pivot_longer(cols = -c(t,year,month,day,h,min,sec),
+  dplyr::select(t,year,month,h,temp,dewpoint,beta,rh,sh) %>%
+  pivot_longer(cols = -c(t,year,month,h),
                names_to = "var",
                values_to = "value") %>% arrange(t)
 
-l.cycle <- df.all.long %>%
-  dplyr::filter(var %in% c("mole_fraction_of_carbon_dioxide_in_air","sh",
-                           "ssrd","strd","temp","tp")) %>%
+df.all.long.ensemble <- df.met.Yoko.conv.ensemble %>%
+  dplyr::select(t,ensemble.member,year,month,h,temp,dewpoint,beta,rh,sh) %>%
+  pivot_longer(cols = -c(t,ensemble.member,year,month,h),
+               names_to = "var",
+               values_to = "value") %>% arrange(t)
+
+#######################################################
+# Diel cycle
+
+d.cycle <- df.all.long.ensemble %>%
+  group_by(h,var,ensemble.member) %>%
+  summarise(value.m = mean(value,na.rm = TRUE),
+            .groups = "keep")
+
+d.cycle.sum <- d.cycle %>%
+  group_by(h,var) %>%
+  summarise(value.m = mean(value.m),
+            .groups = "keep")
+
+d.cycle.renanalysis <- df.all.long %>%
+  group_by(h,var) %>%
+  summarise(value.m = mean(value,na.rm = TRUE),
+            .groups = "keep")
+
+ggplot(d.cycle) +
+  geom_line(aes(x = h,y = value.m, group = ensemble.member)) +
+  geom_line(data = d.cycle.sum,
+            aes(x = h,y = value.m), color = "red") +
+  geom_line(data = d.cycle.renanalysis,
+            aes(x = h,y = value.m), color = "red",linetype = 2) +
+  facet_wrap(~var,scales = "free_y",nrow = 1) +
+  labs(x = "",y = "") +
+  theme_bw()
+
+##############################################################
+# timeseries
+
+
+l.cycle <- df.all.long.ensemble %>%
+  dplyr::filter(var %in% c("dewpoint")) %>%
   group_by(year,var,ensemble.member) %>%
   summarise(value.m = mean(value,na.rm = TRUE),
             .groups = "keep") %>%
@@ -86,13 +131,13 @@ l.cycle.sum <- l.cycle %>%
   summarise(value.m = mean(value.m),
             .groups = "keep")
 
-l.cycle.reanalysis <- df.all.long.reanalysis %>%
-  dplyr::filter(var %in% c("mole_fraction_of_carbon_dioxide_in_air","sh",
-                           "ssrd","strd","temp","tp")) %>%
+l.cycle.reanalysis <- df.all.long %>%
+  dplyr::filter(var %in% c("dewpoint")) %>%
   group_by(year,var) %>%
   summarise(value.m = mean(value,na.rm = TRUE),
             .groups = "keep") %>%
   ungroup()
+
 
 ggplot(l.cycle) +
   geom_rect(xmin = 1960, xmax = 1969 + 11/12, ymin = -Inf, ymax = Inf,
@@ -110,16 +155,18 @@ ggplot(l.cycle) +
   labs(x = "",y = "") +
   theme_bw()
 
-s.cycle <- df.all.long %>%
-  dplyr::filter(var %in% c("sh","ssrd","strd","temp",
-                           "tp")) %>%
+#########################################################
+# Seasonal cycle
+
+
+s.cycle <- df.all.long.ensemble %>%
+  dplyr::filter(var %in% c("dewpoint")) %>%
   group_by(month,var,ensemble.member) %>%
   summarise(value.m = mean(value,na.rm = TRUE),
             .groups = "keep")
 
-s.cycle.reanalysis <- df.all.long.reanalysis %>%
-  dplyr::filter(var %in% c("sh","ssrd","strd","temp",
-                           "tp")) %>%
+s.cycle.reanalysis <- df.all.long %>%
+  dplyr::filter(var %in% c("dewpoint")) %>%
   group_by(month,var) %>%
   summarise(value.m = mean(value,na.rm = TRUE),
             .groups = "keep")
@@ -140,48 +187,4 @@ ggplot(s.cycle) +
   scale_x_continuous(breaks = 1:12,
                      labels = c("J","F","M","A","M","J",
                                 "J","A","S","O","N","D")) +
-  theme_bw()
-
-d.cycle <- df.all.long %>%
-  dplyr::filter(var %in% c("ssrd","strd","sh","temp")) %>%
-  group_by(h,var,ensemble.member) %>%
-  summarise(value.m = mean(value,na.rm = TRUE),
-            .groups = "keep")
-
-d.cycle.sum <- d.cycle %>%
-  group_by(h,var) %>%
-  summarise(value.m = mean(value.m),
-            .groups = "keep")
-
-d.cycle.renanalysis <- df.all.long.reanalysis %>%
-  dplyr::filter(var %in% c("ssrd","strd","sh","temp")) %>%
-  group_by(h,var) %>%
-  summarise(value.m = mean(value,na.rm = TRUE),
-            .groups = "keep")
-
-
-
-data <- read.csv("/home/femeunier/Documents/projects/YGB/data/Radiation_filou.csv",stringsAsFactors = FALSE) %>%
-  mutate(t = as.POSIXlt(Time))
-
-data.agg <- data %>%
-  dplyr::select(t,SW_IN_1_1_1) %>%
-  rename(ssrd = SW_IN_1_1_1) %>%
-  pivot_longer(cols = -t,
-               names_to = "var") %>%
-  mutate(h = hour(t)) %>%
-  group_by(h,var) %>%
-  summarise(value.m = mean(value),
-            .groups = "keep")
-
-ggplot(d.cycle) +
-  geom_line(aes(x = h,y = value.m, group = ensemble.member)) +
-  geom_line(data = d.cycle.sum,
-            aes(x = h,y = value.m), color = "red") +
-  geom_line(data = d.cycle.renanalysis,
-            aes(x = h,y = value.m), color = "red",linetype = 2) +
-  geom_point(data = data.agg,
-             aes(x = h, y = value.m)) +
-  facet_wrap(~var,scales = "free_y",nrow = 1) +
-  labs(x = "",y = "") +
   theme_bw()

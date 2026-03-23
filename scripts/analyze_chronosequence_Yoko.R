@@ -17,56 +17,68 @@ ref_dir <- "/user/scratchkyukon/gent/gvo000/gvo00074/felicien/ED2_soil/ED2/ED/ru
 rundir <- "/kyukon/scratch/gent/vo/000/gvo00074/felicien/Yoko/chronosequence/run/"
 outdir <- "/kyukon/scratch/gent/vo/000/gvo00074/felicien/Yoko/chronosequence/out/"
 
-t.since.disturbance <- c(5,12,20,30,40,50,60,Inf)
+t.since.disturbance <- c(5,12,seq(20,150,10),155,160,Inf)
+
 all.OP <- data.frame()
 
+simul <- c("",".iphen.0",".iphen.2")
+iphen = c(-1,0,2)
 
-for (i in seq(1,length(t.since.disturbance))){
+# simul <- c(".iphen.2")
+# iphen = c(2)
 
-  print(i/length(t.since.disturbance))
+for (isimul in seq(1,length(simul))){
 
-  if (t.since.disturbance[i] < Inf){
-    run_name <- paste0("plot.",t.since.disturbance[i],".yr.old")
+  print(isimul/length(simul))
 
-    run_ref <- file.path(rundir,run_name)
-    out_ref <- file.path(outdir,run_name)
+  for (i in seq(1,length(t.since.disturbance))){
 
-    analy.dir <- file.path(out_ref,"analy")
-    histo.dir <- file.path(out_ref,"histo")
+    print(paste0("-",i/length(t.since.disturbance)))
 
-    years2check <- seq(2020-t.since.disturbance[i],2020,1)
+    if (t.since.disturbance[i] < Inf){
+      run_name <- paste0("plot.",t.since.disturbance[i],".yr.old",simul[isimul])
 
-    basename <- "history"
+      run_ref <- file.path(rundir,run_name)
+      out_ref <- file.path(outdir,run_name)
 
-  } else {
+      analy.dir <- file.path(out_ref,"analy")
+      histo.dir <- file.path(out_ref,"histo")
 
-    out_ref <- "/kyukon/scratch/gent/vo/000/gvo00074/felicien/Yoko/"
+      years2check <- seq(2018-t.since.disturbance[i],2018,1)
 
-    basename <- "Yoko_default"
+      basename <- "history"
 
-    analy.dir <- file.path(out_ref,"analy")
-    histo.dir <- file.path(out_ref,"histo")
+    } else {
 
-    years2check <- 1550:2020
+      out_ref <- "/kyukon/scratch/gent/vo/000/gvo00074/felicien/Yoko/"
+
+      basename <- "Yoko_default"
+
+      analy.dir <- file.path(out_ref,"analy")
+      histo.dir <- file.path(out_ref,"histo")
+
+      years2check <- sort(unique(seq(1550,2022,5),1550,2022))
+    }
+
+    for (cyear in years2check){
+
+      h5file <- file.path(histo.dir,paste0(basename,"-S-",cyear,"-01-01-000000-g01.h5"))
+
+      if (!file.exists(h5file)) next()
+      mymont <- lapply(h5read_opt(h5file),FUN=aperm)
+
+      cAGB.census <- sum(mymont$AGB_PY[,2:11,])
+      cAGB <- sum(mymont$AGB_PY)
+      all.OP <- bind_rows(all.OP,
+                          data.frame(year = cyear,
+                                     timing = t.since.disturbance[i],
+                                     AGB = cAGB,
+                                     AGB.census = cAGB.census,
+                                     phen = iphen[isimul]))
+    }
   }
 
-  for (cyear in years2check){
-
-    h5file <- file.path(histo.dir,paste0(basename,"-S-",cyear,"-01-01-000000-g01.h5"))
-
-    if (!file.exists(h5file)) next()
-    mymont <- lapply(h5read_opt(h5file),FUN=aperm)
-
-    cAGB.census <- sum(mymont$AGB_PY[,2:11,])
-    cAGB <- sum(mymont$AGB_PY)
-    all.OP <- bind_rows(all.OP,
-                        data.frame(year = cyear,
-                                   timing = t.since.disturbance[i],
-                                   AGB = cAGB,
-                                   AGB.census = cAGB.census))
-  }
 }
-
 saveRDS(all.OP,"./outputs/AGB_chronoseq_Yoko.RDS")
 # scp /home/femeunier/Documents/projects/Yoko.regrowth/scripts/analyze_chronosequence_Yoko.R hpc:/data/gent/vo/000/gvo00074/felicien/R
 

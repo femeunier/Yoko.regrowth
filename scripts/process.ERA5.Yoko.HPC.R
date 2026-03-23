@@ -9,6 +9,10 @@ library(Yoko.regrowth)
 library(zoo)
 library(tidyr)
 library(PEcAn.ED2)
+library(future)
+library(xts)
+
+plan(cluster)
 
 start_year <- 1850 ; end_year <- 2021
 
@@ -18,9 +22,9 @@ slat = 0.3
 slon = 25.3
 overwrite = TRUE
 
-destination <- "/data/gent/vo/000/gvo00074/felicien/R/data/"
+destination <- "/kyukon/scratch/gent/vo/000/gvo00074/felicien/Yoko/ERA5.reanalysis"
+site.XTS <- readRDS(file = file.path("/data/gent/vo/000/gvo00074/felicien/R/data/ERA5_reanalysis.RDS"))
 
-site.XTS <- readRDS(file = file.path(destination,"ERA5_reanalysis.RDS"))
 
 for (year in seq(start_year,end_year)){
 

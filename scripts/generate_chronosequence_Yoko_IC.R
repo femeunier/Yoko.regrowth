@@ -17,7 +17,10 @@ ref_dir <- "/user/scratchkyukon/gent/gvo000/gvo00074/felicien/ED2_soil/ED2/ED/ru
 rundir <- "/kyukon/scratch/gent/vo/000/gvo00074/felicien/Yoko/chronosequence/run/"
 outdir <- "/kyukon/scratch/gent/vo/000/gvo00074/felicien/Yoko/chronosequence/out/"
 
-ed2in <- read_ed2in(file.path(ref_dir,"ED2IN_Yoko_default_history"))
+ed2in <- read_ed2in(file.path(ref_dir,"ED2IN_Yoko_historical"))
+
+ed2in$IPHEN_SCHEME = 2
+
 ed2in$IMONTHZ = 2
 ed2in$IDATEZ = 1
 ed2in$IYEARZ = 2020
@@ -27,9 +30,13 @@ ed2in$IMOUTPUT <- 0
 ed2in$IQOUTPUT <- 0
 ed2in$IED_INIT_MODE <- 6
 
+ed2in$METCYC1 <- 1850
+ed2in$METCYCF <- 2019
+
+ed2in$ED_MET_DRIVER_DB <- "/kyukon/scratch/gent/vo/000/gvo00074/felicien/Yoko/ERA5+Obs/ED_MET_DRIVER_HEADER_mod"
+
 # ed2in$SFILIN <- "/kyukon/scratch/gent/vo/000/gvo00074/felicien/Yoko/histo/Yoko_disturbed"
 ed2in$SFILIN <- "/data/gent/vo/000/gvo00074/ED_common_data/inits/Yoko/Yoko.init.empty"
-
 sfilin2copy <- "/kyukon/scratch/gent/vo/000/gvo00074/felicien/Yoko/histo/Yoko_default-S-1550-01-01-000000-g01.h5"
 
 list_dir <- list()
@@ -37,11 +44,11 @@ list_dir <- list()
 Nsimuperjob = 1
 isimu = 0
 
-t.since.disturbance <- c(5,12,20,60,30,40,50)
+t.since.disturbance <- c(5,12,seq(20,150,10),155,160)
 
 for (i in seq(1,length(t.since.disturbance))){
 
-  run_name <- paste0("plot.",t.since.disturbance[i],".yr.old")
+  run_name <- paste0("plot.",t.since.disturbance[i],".yr.old.iphen.2")
 
   run_ref <- file.path(rundir,run_name)
   out_ref <- file.path(outdir,run_name)
@@ -63,7 +70,7 @@ for (i in seq(1,length(t.since.disturbance))){
 
   ed2in_scenar$IMONTHA  <- 1
   ed2in_scenar$IDATEA   <- 1
-  ed2in_scenar$IYEARA   <- 2020 - t.since.disturbance[i]
+  ed2in_scenar$IYEARA   <- 2018 - t.since.disturbance[i]
 
   write_ed2in(ed2in_scenar,filename = file.path(run_ref,"ED2IN"))
 
@@ -78,7 +85,7 @@ for (i in seq(1,length(t.since.disturbance))){
   # job.sh
 
   write_joblauncher(file =  file.path(dir_joblauncher,"job.sh"),
-                    nodes = 1,ppn = 18,mem = 16,walltime = 12,
+                    nodes = 1,ppn = 16,mem = 16,walltime = 24,
                     prerun = "ml purge ; ml intel-compilers/2021.4.0 HDF5/1.12.1-iimpi-2021b UDUNITS/2.2.28-GCCcore-11.2.0; ulimit -s unlimited",
                     CD = run_ref,
                     ed_exec = "/user/scratchkyukon/gent/gvo000/gvo00074/felicien/ED2.2/ED2/ED/build/ed_2.2-opt-master-fa80dab6",

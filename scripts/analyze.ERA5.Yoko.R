@@ -86,14 +86,15 @@ for (iyear in seq(1,length(years2add))){
 
 }
 
-df.all.time.all.local.time <- df.all.time.all %>% mutate(t = t + 3600) %>%
+df.all.time.all.local.time <- df.all.time.all %>% mutate(t = t + 0) %>%
   mutate(year = year(t),
          month = month(t),
          day = day(t),
          h = hour(t),
          min = minute(t),
          sec = second(t)) %>%
-  dplyr::filter(year > min(year))
+  dplyr::filter(year > min(year),
+                year <= 2021)
 
 
 # Source = https://keelingcurve.ucsd.edu/permissions-and-data-sources/
@@ -198,6 +199,7 @@ site.XTS[site.XTS<0] <- 0
 
 destination <- file.path(main.dir,paste0("ERA5_Yoko_processed"))
 dir.create(destination,showWarnings = FALSE)
+
 saveRDS(object = site.XTS,
         file = file.path(destination,"ERA5_reanalysis.RDS"))
 

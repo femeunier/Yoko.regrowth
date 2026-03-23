@@ -5,10 +5,14 @@ library(reshape2)
 library(dplyr)
 library(ggplot2)
 library(lubridate)
-library(YGB)
+library(Yoko.regrowth)
 library(zoo)
 library(tidyr)
 library(PEcAn.ED2)
+library(xts)
+library(future)
+
+plan(cluster)
 
 start_year <- 1850 ; end_year <- 2021
 
@@ -18,8 +22,8 @@ slat = 0.3
 slon = 25.3
 overwrite = TRUE
 
-destination <- "/data/gent/vo/000/gvo00074/felicien/R/data/"
-site.XTS <- file.path(destination,"ERA5_ensemble.RDS")
+destination <- "/kyukon/scratch/gent/vo/000/gvo00074/felicien/Yoko/ERA5.ensemble/"
+site.XTS <- readRDS(file.path("/data/gent/vo/000/gvo00074/felicien/R/data/ERA5_ensemble.RDS"))
 
 for (year in seq(start_year,end_year)){
 
@@ -60,10 +64,11 @@ for (imember in seq(1,10)){
       end_date = paste0(year,"-12-31"),
       lat = slat,
       lon = slon,
-      lst = 2,
+      lst = 0,
       overwrite = overwrite
     )
   }
 }
 
+# scp /home/femeunier/Documents/projects/Yoko.regrowth/scripts/process.ERA5.Yoko.ensemble.HPC.R hpc:/data/gent/vo/000/gvo00074/felicien/R/
 

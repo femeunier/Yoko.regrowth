@@ -1,7 +1,7 @@
 def mod_netcdf_var(file_name,var_name,new_values):
 
-  import h5py
-  import os
+  #import h5py
+  #import os
   import netCDF4
 
   # os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"

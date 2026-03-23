@@ -9,28 +9,68 @@ library(wesanderson)
 library(minpack.lm)
 
 t.of.dist <- c(LPJ = 931,
-               ED2 = 2200,
+               ED2 = 1868,
                ORCHIDEE = 17)
 
-tmax = 1000
+tmax = 150
+times <- c(0,5,12,seq(20,150,10),-1,-5,-10)
+times2plot <- c(0,5,12,20,60,-1,-5,-10)
 
+threshold = TRUE # To compute C stocks (max growth per year)?
 
 #######################################################################################################
 # Data
 
-data.wide <- bind_rows(list(data.frame(age.num = 0, agb.av = 0, agb.sd = 0),
+data.tmp <- bind_rows(list(data.frame(age.num = 0,
+                                       agb.av = 0, agb.sd = 0,
+                                       agb.threshold.av = 0, agb.threshold.sd = 0),
                             readRDS("./data/Yoko_AGB.tot_dyn.RDS"))) %>%
   mutate(age.num = case_when(age.num < 100 ~ age.num,
                              TRUE ~ tmax)) %>%
   mutate(agb.av= agb.av/10,
-         agb.sd = agb.sd/10) %>%
-  rename(mean = agb.av,
-         t = age.num,
-         sd = agb.sd) %>%
-  mutate(low = mean - sd,
-         up = mean + sd) %>%
-  mutate(t.since = case_when(t > 100 ~ -5,
-                             TRUE ~ t))
+         agb.sd = agb.sd/10,
+         agb.threshold.av= agb.threshold.av/10,
+         agb.threshold.sd = agb.threshold.sd/10)
+
+if (threshold){
+  data.wide <- data.tmp %>%
+    rename(mean =  agb.threshold.av,
+           t = age.num,
+           sd = agb.threshold.sd) %>%
+    mutate(low = mean - sd,
+           up = mean + sd) %>%
+    mutate(t.since = case_when(t > 100 ~ -5,
+                               TRUE ~ t))
+} else {
+  data.wide <- data.tmp %>%
+    rename(mean =  agb.av,
+           t = age.num,
+           sd = agb.sd) %>%
+    mutate(low = mean - sd,
+           up = mean + sd) %>%
+    mutate(t.since = case_when(t > 100 ~ -5,
+                               TRUE ~ t))
+}
+
+# Data fit
+m0 <- nlsLM(data = data.wide,
+            mean ~ a*(1 - exp(-b*t))**c,
+            start=list(a = 300,
+                       b = 0.001,
+                       c = 1),
+            lower = c(0,0,0),
+            upper = c(Inf,Inf,Inf),
+            control = nls.control(maxiter = 500, tol = 1e-05, minFactor = 1/1024/10,
+                                  printEval = TRUE, warnOnly = TRUE))
+
+df.fit <- data.frame(time = seq(0,tmax),
+                     agb = coef(m0)[1]*(1 - exp(-coef(m0)[2]*seq(0,tmax)))**coef(m0)[3])
+
+df.fit.ext <- bind_rows(list(data.frame(time = seq(-10,-0.001,length.out = 100),
+                                        agb = df.fit$agb[df.fit$time == tmax],
+                                        agb.rel = 1),
+                             df.fit %>% mutate(agb.rel = agb/agb[time == tmax])))
+
 
 #######################################################################################################
 # LPJ
@@ -67,29 +107,57 @@ df.fit.LPJ <- data.frame(time = seq(0,tmax),
 #                                       raw.fit.LPJ %>% arrange(Year) %>% pull(Total),
 #                                       seq(0,tmax))[["y"]])
 
-plot(raw.fit.LPJ$Year,raw.fit.LPJ$Total)
-lines(df.fit.LPJ$time,df.fit.LPJ$agb, col = "red")
+# plot(raw.fit.LPJ$Year,raw.fit.LPJ$Total)
+# lines(df.fit.LPJ$time,df.fit.LPJ$agb, col = "red")
 
 
 #######################################################################################################
 # ED2
 
 # system2("rsync",paste("-avz",
-#                       "hpc:/data/gent/vo/000/gvo00074/felicien/R/df_Yoko_chronosequence.RDS",
+#                       "hpc:/data/gent/vo/000/gvo00074/felicien/R/outputs/AGB_chronoseq_Yoko.RDS",
 #                       "./outputs/"))
 
-df_OP_SA_Yoko.ref <- readRDS(file.path("./data/","df_Yoko_chronosequence.RDS")) %>%
-  mutate(t = yr + (month - 1)/12/2) %>%
-  rename(agb = AGB) %>%
-  mutate(t.since = t - t.of.dist["ED2"]) %>%
-  mutate(agb = case_when(t.since <= 0 ~ agb + 5,
-                         TRUE ~ agb))
+df_Yoko <- readRDS(file.path("./outputs/","AGB_chronoseq_Yoko.RDS")) %>%
+  filter(phen == 2) %>%
+  mutate(agb = AGB.census) %>%
+  dplyr::select(- phen)
 
 
-raw.fit.ED2 <- df_OP_SA_Yoko.ref %>%
-  filter(yr <= 2300,yr > 1800) %>%
-  mutate(yr = case_when((yr <= t.of.dist["ED2"]) ~ tmax,
-                        TRUE ~ (as.integer(yr) - t.of.dist["ED2"] - 1)))
+df.chrono <- bind_rows(list(data.frame(timing = 0,
+                                       agb = 0,
+                                       AGB = 0,
+                                       AGB.census = 0),
+                            df_Yoko %>%
+                              filter(year == 2018) %>%
+                              dplyr::select(-year),
+
+                            df_Yoko %>%
+                              filter(year == 2018,timing == tmax) %>%
+                              dplyr::select(-year) %>%
+                              mutate(timing = tmax-1)
+
+
+                            )) %>%
+  mutate(timing = case_when(timing == Inf ~ tmax,
+                            TRUE ~ timing)) %>%
+  rename(yr = timing) %>%
+  mutate(t.since = case_when(yr ==  tmax ~ (tmax - yr - 1),
+                             yr >  tmax ~ (tmax - yr),
+                             TRUE ~ yr)) %>%
+  arrange(t.since)
+
+
+# df_OP_SA_Yoko.ref <- readRDS(file.path("./outputs/","AGB_chronoseq_Yoko.RDS")) %>%
+#   dplyr::filter(phen == 0) %>%
+#   dplyr::filter(is.finite(timing)) %>%
+#   dplyr::filter(timing == max(timing)) %>%
+#   rename(yr = year) %>%
+#   mutate(t = yr) %>%
+#   mutate(agb = AGB.census) %>%
+#   mutate(t.since = t - t.of.dist["ED2"])
+
+raw.fit.ED2 <- df.chrono
 
 m.ED2 <- nlsLM(data = raw.fit.ED2,
                # agb ~ a*(1 - exp(-b*yr)),
@@ -110,8 +178,8 @@ df.fit.ED2 <- data.frame(time = seq(0,tmax),
 #                                       raw.fit.ED2 %>% arrange(yr) %>% pull(agb),
 #                                       seq(0,tmax))[["y"]])
 
-plot(raw.fit.ED2$yr,raw.fit.ED2$agb)
-lines(df.fit.ED2$time,df.fit.ED2$agb, col = "red")
+# plot(raw.fit.ED2$yr,raw.fit.ED2$agb)
+# lines(df.fit.ED2$time,df.fit.ED2$agb, col = "red")
 
 #######################################################################################################
 # ORCHIDEE
@@ -208,8 +276,7 @@ df_OP_ORCH <- bind_rows(list(df_OP_ORCH_precut,
                                mutate(yr = 1:nrow(df_OP_ORCH_postcut)) %>%
                                ungroup() %>%
                                dplyr::select(yr,agb) %>%
-                               mutate(yr = yr + max(df_OP_ORCH_precut$yr))
-)) %>%
+                               mutate(yr = yr + max(df_OP_ORCH_precut$yr)))) %>%
   mutate(t.since =  yr - t.of.dist["ORCHIDEE"]) %>% ungroup()
 
 raw.fit.ORCHIDEE <- bind_rows(list(df_OP_ORCH_postcut %>% ungroup() %>%
@@ -235,45 +302,47 @@ df.fit.ORCHIDEE <- data.frame(time = seq(0,tmax),
 #                                            raw.fit.ORCHIDEE %>% arrange(yr) %>% pull(agb),
 #                                            seq(0,tmax))[["y"]])
 
-plot(raw.fit.ORCHIDEE$yr,raw.fit.ORCHIDEE$agb)
-lines(df.fit.ORCHIDEE$time,df.fit.ORCHIDEE$agb, col = "red")
-
-
+# plot(raw.fit.ORCHIDEE$yr,raw.fit.ORCHIDEE$agb)
+# lines(df.fit.ORCHIDEE$time,df.fit.ORCHIDEE$agb, col = "red")
 
 #######################################################################################################
 
 
 OP.all <- bind_rows(list(
   cmass %>% dplyr::select(t.since,cmass) %>% rename(AGB = cmass) %>% mutate(model = "LPJ-GUESS"),
-  df_OP_SA_Yoko.ref %>% dplyr::select(t.since,agb) %>% rename(AGB = agb) %>% mutate(model = "ED2"),
-  df_OP_ORCH %>% dplyr::select(t.since, agb) %>% rename(AGB = agb) %>% mutate(model = "ORCHIDEE")))
+  df.chrono %>% dplyr::select(t.since,agb) %>% rename(AGB = agb) %>% mutate(model = "ED2"),
+  df_OP_ORCH %>% dplyr::select(t.since, agb) %>% rename(AGB = agb) %>% mutate(model = "ORCHIDEE"))) %>%
+  filter(t.since %in% times)
 
 ########################################################################################################
 pal <- wes_palette("Zissou1", 3, type = "continuous")
 
-ggplot() +
-  geom_point(data = data.wide,
-             aes(x = t.since,
-                 y = mean),
-             color = "black",
-             size = 2) +
-  geom_errorbar(data = data.wide,
-                aes(x = t.since,y = mean,ymin = low,ymax = up),
-                width = 0,
-                color = "black") +
-  labs(x = "Time since disturbance (yr)", y = "AGB (kgC/m²)", color = "") +
-  theme_bw() +
-  scale_x_continuous(limits = c(-10,80)) +
-  scale_y_continuous(limits = c(0,30)) +
-  geom_vline(xintercept = 0, linetype = 2) +
-  theme(text = element_text(size = 22))
-
-ggsave(last_plot(),filename = "./Figures/MI_regrowth_data.png",dpi = 300, width = 20, height = 10,unit = "cm")
+# ggplot() +
+#   geom_point(data = data.wide,
+#              aes(x = t.since,
+#                  y = mean),
+#              color = "black",
+#              size = 2) +
+#   geom_errorbar(data = data.wide,
+#                 aes(x = t.since,y = mean,ymin = low,ymax = up),
+#                 width = 0,
+#                 color = "black") +
+#   labs(x = "Time since disturbance (yr)", y = "AGB (kgC/m²)", color = "") +
+#   theme_bw() +
+#   scale_x_continuous(limits = c(-10,80)) +
+#   scale_y_continuous(limits = c(0,30)) +
+#   geom_vline(xintercept = 0, linetype = 2) +
+#   theme(text = element_text(size = 22))
+# ggsave(last_plot(),filename = "./Figures/MI_regrowth_data.png",dpi = 300, width = 20, height = 10,unit = "cm")
 
 
 ggplot(data = OP.all %>% filter(t.since >= -10,
                                 t.since <= 80)) +
-  geom_line(aes(x = t.since, y = AGB, color = model),show.legend = FALSE) +
+  geom_line(aes(x = t.since, y = AGB, color = model)) +
+
+  geom_line(data = df.fit.ext,
+            aes(x = time, y = agb), color = "black", show.legend = FALSE) +
+
   geom_point(data = data.wide,
              aes(x = t.since,
                  y = mean),
@@ -289,7 +358,8 @@ ggplot(data = OP.all %>% filter(t.since >= -10,
   scale_y_continuous(limits = c(0,30)) +
   scale_color_manual(values = pal) +
   geom_vline(xintercept = 0, linetype = 2) +
-  theme(text = element_text(size = 22))
+  theme(text = element_text(size = 22),
+        legend.position = c(0.7,0.8))
 
 ggsave(last_plot(),filename = "./Figures/MI_regrowth_models.png",dpi = 300, width = 20, height = 10,unit = "cm")
 
@@ -320,6 +390,10 @@ ggplot(data = MIP %>% filter(t.since <= 77),
        aes(x = t.since, y = AGB.m)) +
   geom_line(color = "darkgrey",
             show.legend = FALSE) +
+
+  geom_line(data = df.fit.ext,
+            aes(x = time, y = agb), color = "black", show.legend = FALSE) +
+
   geom_ribbon(aes(ymin = pmax(0,AGB.m - AGB.se), ymax = AGB.m + AGB.se), alpha = 0.4, fill = "grey",color = NA) +
   geom_point(data = data.wide,
              aes(x = t.since,
@@ -336,7 +410,7 @@ ggplot(data = MIP %>% filter(t.since <= 77),
                 aes(x = t.since,y = mean,ymin = low,ymax = up),
                 width = 0.,
                 color = "black") +
-  labs(x = "Time since disturbance (yr)", y = "AGB (kgC/m²)", color = "") +
+  labs(x = "Time since disturbance (yr)", y = "AGB (kgC/m²)", color = "", shape = "") +
   scale_x_continuous(limits = c(-7,75),expand = c(0,1)) +
   scale_y_continuous(limits = c(0,31),expand = c(0,0)) +
   scale_color_manual(values = pal) +
@@ -351,7 +425,8 @@ ggplot(data = MIP %>% filter(t.since <= 77),
         panel.grid.minor = element_blank(),
         panel.border = element_blank(),
         panel.background = element_rect(fill = "transparent", colour = NA),
-        plot.background = element_rect(fill = "transparent", colour = NA))
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        legend.position = c(0.7,0.8))
 
 
 ggsave(plot = last_plot(),
@@ -377,7 +452,9 @@ data.wide.rel <- data.wide %>%
 
 
 ggplot(data = OP.all.rel) +
-  geom_line(aes(x = t.since, y = AGB.rel*100, color = model),show.legend = FALSE) +
+  geom_line(aes(x = t.since, y = AGB.rel*100, color = model)) +
+  geom_line(data = df.fit.ext,
+            aes(x = time, y = agb.rel*100), color = "black",show.legend = FALSE) +
   geom_point(data = data.wide.rel,
              aes(x = t.since,
                  y = AGB.rel*100),
@@ -394,36 +471,12 @@ ggplot(data = OP.all.rel) +
   scale_color_manual(values = pal) +
   geom_vline(xintercept = 0, linetype = 2) +
   theme(text = element_text(size = 22),
-        legend.position = c(0.8,0.8))
+        legend.position = c(0.7,0.8))
 
 ggsave(last_plot(),filename = "./Figures/MI_regrowth_recovery_models.png",dpi = 300, width = 20, height = 10,unit = "cm")
 
 
 ######################################################################################################################
-# Diff
-
-# Data fit
-m0 <- nlsLM(data = data.wide,
-            mean ~ a*(1 - exp(-b*t))**c,
-            start=list(a = 300,
-                       b = 0.001,
-                       c = 1),
-            lower = c(0,0,0),
-            upper = c(Inf,Inf,Inf),
-            control = nls.control(maxiter = 500, tol = 1e-05, minFactor = 1/1024/10,
-                                  printEval = TRUE, warnOnly = TRUE))
-
-df.fit <- data.frame(time = seq(0,tmax),
-                     agb = coef(m0)[1]*(1 - exp(-coef(m0)[2]*seq(0,tmax)))**coef(m0)[3])
-
-# df.fit <- data.frame(time = seq(0,tmax),
-#                      agb = approx(data.wide$t,
-#                                   data.wide$mean,
-#                                   seq(0,tmax)))
-
-plot(data.wide$t,data.wide$mean,ylim = c(0,30))
-lines(df.fit$time,df.fit$agb,col = "red")
-
 # Model fit
 
 df.all.fit <- df.fit.ORCHIDEE %>%
@@ -436,37 +489,49 @@ df.all.fit <- df.fit.ORCHIDEE %>%
                values_to = "agb",
                names_to = "model")
 
+
+df.ME.all <- OP.all %>%
+  pivot_wider(names_from = model,
+              values_from = AGB) %>%
+  group_by(t.since) %>%
+  mutate(agb.m = mean(c(`LPJ-GUESS`,ED2,ORCHIDEE),na.rm = TRUE))
+
 df.ME <- df.all.fit  %>%
   group_by(time) %>%
   summarise(agb.m = mean(agb,na.rm = TRUE))
 
-df.model.vs.data <- df.fit %>% rename(data = agb) %>%
-  left_join(df.ME %>% rename(model = agb.m),
+df.model.vs.data <- df.fit %>%
+  dplyr::filter(time %in% times) %>%
+  rename(data = agb) %>%
+  left_join(df.ME.all %>%
+              dplyr::select(t.since,agb.m) %>%
+              rename(time = t.since) %>%
+              rename(model = agb.m),
             by = "time") %>%
   mutate(diff = model - data,
          diff.rel = (model - data)/data)
 
-ggplot() +
-  geom_line(data = df.model.vs.data,
-            aes(x = 1+time, y = data)) +
-  geom_line(data = df.model.vs.data,
-            aes(x = 1 + time, y = model),linetype = 2) +
-  geom_line(data = df.all.fit,
-            aes(x = 1 + time, y = agb, color = model)) +
-  geom_point(data = data.wide.rel,
-             aes(x = 1 + t,
-                 y = AGB),
-             color = "black",
-             size = 2) +
-  scale_x_log10() +
-  theme_bw()
+# ggplot() +
+#   geom_line(data = df.model.vs.data,
+#             aes(x = 1+time, y = data)) +
+#   geom_line(data = df.model.vs.data,
+#             aes(x = 1 + time, y = model),linetype = 2) +
+#   geom_line(data = df.all.fit,
+#             aes(x = 1 + time, y = agb, color = model)) +
+#   geom_point(data = data.wide.rel,
+#              aes(x = 1 + t,
+#                  y = AGB),
+#              color = "black",
+#              size = 2) +
+#   scale_x_log10() +
+#   theme_bw()
 
-ggplot(data = df.model.vs.data %>% filter(time > 10)) +
-  geom_line(aes(x = time, y = diff.rel)) +
+ggplot(data = df.model.vs.data) +
+  geom_point(aes(x = time, y = diff.rel)) +
   geom_hline(yintercept = 0, linetype = 2) +
   labs(x = "Time since disturbance (yr)", y = "Model - data \r\n (kgC/m²)", color = "") +
   # scale_x_log10() +
-  scale_x_continuous(breaks = seq(0,tmax,250)) +
+  # scale_x_continuous(breaks = seq(0,tmax,250)) +
   theme_bw() +
   theme(text = element_text(size = 22),
         panel.grid = element_blank(),

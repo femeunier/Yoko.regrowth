@@ -3,6 +3,7 @@ rm(list = ls())
 library(xts)
 library(dplyr)
 library(lubridate)
+library(tidyr)
 
 met.Yoko <- readRDS(file = file.path("/home/femeunier/Documents/projects/Yoko.regrowth/data/ERA5/Yoko",
                                      paste0("ERA5_Yoko_processed"),

@@ -6,6 +6,9 @@ library(minpack.lm)
 library(tidyr)
 library(stringr)
 
+age.OG = 150
+max.growth = 50 # mm/yr above this threshold not accounted fro regwroth!
+
 data.Yoko <- read.csv("./data/yoko_inventory.csv",stringsAsFactors = FALSE)
 data.Yoko.m <- data.Yoko %>%
   mutate(dbh = rowMeans(dplyr::select(data.Yoko, starts_with("DBH")),na.rm = TRUE)) %>%
@@ -26,16 +29,39 @@ y <- data.Yoko.m$height
 f <- predict(m0)
 1-sum((y[!is.na(y)]-f)^2,na.rm = TRUE)/(length(y[!is.na(y)])*var(y[!is.na(y)]))
 
-age.OG = 250
-
-data.Yoko.h <- data.Yoko.m %>% mutate(h = case_when(!is.na(height) ~ height,
-                                                    TRUE ~ coef(m0)[1]*(1 -exp(-coef(m0)[2]*((dbh)**coef(m0)[3]))))) %>%
+data.Yoko.h <- data.Yoko.m %>%
+  mutate(h = case_when(!is.na(height) ~ height,
+                       TRUE ~ coef(m0)[1]*(1 -exp(-coef(m0)[2]*((dbh)**coef(m0)[3]))))) %>%
+  mutate(h.type = case_when(!is.na(height) ~ "Obs",
+                            TRUE ~ "Allom")) %>%
   mutate(agb = 0.0673*(meanWD*(dbh**2)*h)**0.976) %>%
   mutate(age.num = case_when(Age == ">100" ~ as.character(age.OG),
                              TRUE ~ (Age))) %>%
   mutate(age.num = as.numeric(age.num)) %>%
   mutate(PFT = case_when(is.na(FunctionalG) ~ "Other",
                          TRUE ~ FunctionalG))
+
+dbhs <- seq(min(data.Yoko.h$dbh,na.rm = TRUE)/1000,
+            1.2*max(data.Yoko.h$dbh,na.rm = TRUE),length.out = 1000)
+
+df.H <- data.frame(dbh = dbhs,
+                   h = predict(m0,newdata = data.frame(dbh = dbhs)))
+
+ggplot(data.Yoko.h ) +
+  geom_point(aes(x = dbh,y = h, shape = as.factor(h.type))) +
+  geom_line(data = df.H,
+            aes(x = dbh,y = h), color = "red") +
+  scale_shape_manual(values =c(16,1)) +
+  theme_bw()
+
+data.Yoko.h <- data.Yoko.h %>%
+  mutate(growth = dbh*10/age.num) # mm/yr
+
+ggplot(data = data.Yoko.h) +
+  geom_boxplot(aes(y = growth,
+                   x = as.factor(age.num),
+                   fill = as.factor(age.num))) +
+  theme_bw()
 
 ########################################################################################
 # Aggregate
@@ -44,42 +70,106 @@ data.plot <-
   data.Yoko.h %>%
   group_by(age.num,plots,plot.num,PFT) %>%
   summarise(agb.m = sum(agb,na.rm = TRUE)/(40*40)/2*10, # MgC/ha
+            agb.threshold.m = sum(agb[growth <= max.growth], na.rm = TRUE)/(40*40)/2*10, # MgC/ha
             .groups = "keep")
+
+data.Yoko.h %>%
+  dplyr::filter(growth <= max.growth) %>%
+  group_by(Age) %>%
+  summarise(dbh.min = min(dbh,na.rm = TRUE),
+            dbh.mean = mean(dbh,na.rm = TRUE),
+            dbh.median = median(dbh,na.rm = TRUE),
+            dbh.max = max(dbh,na.rm = TRUE),
+            .groups = "keep") %>%
+  mutate(Age = factor(Age,
+                      levels = c("5","12","20","60",">100"))) %>%
+  arrange(Age)
+
 
 data.plot.pft.m <- data.plot %>%
   ungroup() %>%
-  dplyr::select(age.num,PFT,plot.num,agb.m) %>%
+  dplyr::select(age.num,PFT,plot.num,
+                agb.m,agb.threshold.m) %>%
   complete(age.num = c(5,12,20,60,age.OG),
            PFT = c("NPLD","PIO","SB","Other"),
            plot.num = c(1,2,3),
-           fill = list(agb.m = 0)) %>%
+           fill = list(agb.m = 0,
+                       agb.threshold.m = 0)) %>%
   group_by(age.num,PFT) %>%
   summarise(agb.av = mean(agb.m),
             agb.sd = sd(agb.m),
+
+            agb.threshold.av = mean(agb.threshold.m),
+            agb.threshold.sd = sd(agb.threshold.m),
+
             .groups = "keep") %>%
   ungroup()
 
 data.plot.m <- data.plot %>%
   group_by(age.num,plots) %>%
   summarise(agb.m = sum(agb.m),
+            agb.threshold.m = sum(agb.threshold.m),
             .groups = "keep") %>%
   group_by(age.num) %>%
   summarise(agb.av = mean(agb.m),
             agb.sd = sd(agb.m),
+
+            agb.threshold.av = mean(agb.threshold.m),
+            agb.threshold.sd = sd(agb.threshold.m),
+
             .groups = "keep") %>%
   ungroup()
+
+
+data.plot.AGB <- data.plot %>%
+  group_by(age.num,plots) %>%
+  summarise(agb.m = sum(agb.m),
+            agb.threshold.m = sum(agb.threshold.m),
+            .groups = "keep")
+
+ggplot(data = data.plot.AGB) +
+  geom_boxplot(aes(x = as.factor(age.num),y = agb.m)) +
+  theme_bw()
+
 
 ############################################################################################
 # AGB + AGB component dynamics
 
+data.plot.pft.m.long <-
+  data.plot.pft.m %>%
+  pivot_longer(cols = -c(age.num,PFT),
+               names_to = "type",
+               values_to = "agb") %>%
+  mutate(metrics = case_when(grepl("av",type) ~ "av",
+                             TRUE ~ "sd"),
+         threshold = case_when(grepl("threshold",type) ~ TRUE,
+                               TRUE ~ FALSE)) %>%
+  dplyr::select(-type) %>%
+  pivot_wider(names_from = "metrics",
+              values_from = "agb")
+
+data.plot.m.long <-
+  data.plot.m %>%
+  pivot_longer(cols = -c(age.num),
+               names_to = "type",
+               values_to = "agb") %>%
+  mutate(metrics = case_when(grepl("av",type) ~ "av",
+                             TRUE ~ "sd"),
+         threshold = case_when(grepl("threshold",type) ~ TRUE,
+                               TRUE ~ FALSE)) %>%
+  dplyr::select(-type) %>%
+  pivot_wider(names_from = "metrics",
+              values_from = "agb")
+
 ggplot() +
-  geom_bar(data = data.plot.pft.m,
-           aes(x = age.num,y = agb.av,fill = PFT), stat = "identity") +
-  geom_point(data = data.plot.m,
-             aes(x = age.num, y = agb.av), size = 1) +
-  geom_errorbar(data = data.plot.m,
-                aes(x = age.num, y = agb.av,
-                    ymin = agb.av - agb.sd, ymax = agb.av + agb.sd),width = 0) +
+  geom_bar(data = data.plot.pft.m.long,
+           aes(x = age.num,y = av,fill = PFT), stat = "identity") +
+  geom_point(data = data.plot.m.long,
+             aes(x = age.num, y = av), size = 1) +
+  geom_errorbar(data = data.plot.m.long,
+                aes(x = age.num, y = av,
+                    ymin = av - sd, ymax = av + sd),width = 0) +
+  facet_wrap(~ threshold) +
   theme_bw()
 
 saveRDS(data.plot.pft.m,"./data/Yoko_AGB_dyn.RDS")

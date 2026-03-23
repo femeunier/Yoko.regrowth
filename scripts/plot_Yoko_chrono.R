@@ -14,18 +14,46 @@ library(minpack.lm)
 
 ####################################################################################################
 
-tmax = 500
+tmax = 150
+threshold = TRUE # To compute C stocks (max growth per year)?
 
-file <- "/home/femeunier/Desktop/FWO/site.csv"
-data.site <- read.csv(file)
-data.wide <- data.site %>%
-  mutate(agb = agb) %>%
-  pivot_wider(names_from = type,
-              values_from = agb) %>%
-  mutate(t = case_when (t > 100 ~ as.integer(tmax),
-                        TRUE ~ t)) %>%
-  mutate(timing = case_when(t == tmax ~ "Inf",
-                            TRUE ~ as.character(t)))
+# Data
+
+# file <- "/home/femeunier/Desktop/FWO/site.csv"
+# data.site <- read.csv(file)
+# data.wide <- data.site %>%
+#   mutate(agb = agb) %>%
+#   pivot_wider(names_from = type,
+#               values_from = agb) %>%
+#   mutate(t = case_when (t > 100 ~ as.integer(tmax),
+#                         TRUE ~ t)) %>%
+#   mutate(timing = case_when(t == tmax ~ "Inf",
+#                             TRUE ~ as.character(t)))
+
+if (threshold){
+  data.wide <- readRDS("./data/Yoko_AGB.tot_dyn.RDS") %>%
+    rename(t = age.num,
+           mean = agb.threshold.av,
+           sd = agb.threshold.sd) %>%
+    mutate(timing = as.character(t),
+           up = mean+1.96*(sd)/sqrt(3),
+           low = mean-1.96*(sd)/sqrt(3)) %>%
+    mutate(timing = case_when(t == max(t) ~ "Inf",
+                              TRUE ~ timing))
+} else {
+  data.wide <- readRDS("./data/Yoko_AGB.tot_dyn.RDS") %>%
+    rename(t = age.num,
+           mean = agb.av,
+           sd = agb.sd) %>%
+    mutate(timing = as.character(t),
+           up = mean+1.96*(sd)/sqrt(3),
+           low = mean-1.96*(sd)/sqrt(3)) %>%
+    mutate(timing = case_when(t == max(t) ~ "Inf",
+                              TRUE ~ timing))
+}
+
+
+
 
 m0 <- nlsLM(data = data.wide,
             mean ~ a*(1 - exp(-b*t))**c,
@@ -52,27 +80,34 @@ system2("rsync",paste("-avz",
                       "hpc:/data/gent/vo/000/gvo00074/felicien/R/outputs/AGB_chronoseq_Yoko.RDS",
                       "./outputs/"))
 
-df_Yoko <- readRDS(file.path("./outputs/","AGB_chronoseq_Yoko.RDS"))
+df_Yoko <- readRDS(file.path("./outputs/","AGB_chronoseq_Yoko.RDS")) %>%
+  filter(phen == 2) %>%
+  mutate(AGB = AGB.census)
 
-ggplot(data = df_Yoko %>% filter(year >= 1950)) +
-  geom_line(aes(x = year, y = 10*AGB.census,color = as.factor(timing))) +
+ggplot(data = df_Yoko %>% filter(year >= 1550)) +
+  geom_line(aes(x = year, y = 10*AGB,
+                group = interaction(as.factor(phen),timing),
+                color = as.factor(timing))) +
   geom_point(data = data.wide,
-             aes(x = 2020,
+             aes(x = 2018,
                  y = mean,
                  color = as.factor(timing)),alpha = 0.7,
              size = 2) +
+  scale_x_continuous(limits = c(2000,2020)) +
+  facet_wrap(~as.factor(phen)) +
   theme_bw()
 
 ggplot(data = df_Yoko %>%
          group_by(timing) %>%
          mutate(year0 = year - min(year)) %>%
-         filter(year0 <= 60)) +
-  geom_line(aes(x = year0, y = 10*AGB.census,color = as.factor(timing))) +
+         filter(year0 <=  tmax)) +
+  geom_line(aes(x = year0, y = 10*AGB,color = as.factor(timing))) +
   geom_point(data = data.wide %>% filter(t <= 60),
              aes(x = t,
                  y = mean,
                  color = as.factor(t)),alpha = 0.7,
              size = 2) +
+  facet_wrap(~as.factor(phen)) +
   theme_bw()
 
 
@@ -80,7 +115,7 @@ df.chrono <- bind_rows(list(data.frame(year = 2020,
                                        timing = 0,
                                        AGB = 0,
                                        AGB.census = 0),
-                            df_Yoko %>% filter(year == 2020))) %>%
+                            df_Yoko %>% filter(year == 2018))) %>%
   mutate(timing = case_when(timing == Inf ~ tmax,
                             TRUE ~ timing))
 
@@ -109,13 +144,11 @@ df.fit.mod <- data.frame(time = seq(0,tmax),
 ###################################################################################
 
 ggplot(data = df.chrono,
-       aes(x = timing, y = AGB.census*10)) +
-  geom_point(color = "red") +
+       aes(x = timing, y = AGB*10)) +
+  geom_point(color = "red",shape = 2) +
   geom_line(data = df.fit.mod,
             aes(x = time, y = agb),
             color= "red") +
-
-
   geom_line(data = df.fit,
             aes(x = time, y = agb),
             color= "grey") +
